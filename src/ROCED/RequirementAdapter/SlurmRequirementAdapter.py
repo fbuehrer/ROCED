@@ -128,6 +128,8 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
             if "Dependency" in values[1]:
                 cpus_dependency_jobs = cpus_dependency_jobs + int(values[2])
                 continue
+	    if "PartitionTimeLimit" in values[1]:
+		continue
             elif "PENDING" in  values[0]:
                 required_cpus_total = required_cpus_total + int(values[2])
                 required_cpus_idle_jobs = required_cpus_idle_jobs + int(values[2])
