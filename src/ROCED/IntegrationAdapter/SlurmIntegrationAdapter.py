@@ -23,6 +23,7 @@ from __future__ import unicode_literals, absolute_import
 import getpass
 import logging
 import pprint
+import pyslurm
 from collections import defaultdict
 from datetime import datetime
 
@@ -35,10 +36,6 @@ from Util.PythonTools import Caching
 class SlurmIntegrationAdapter(IntegrationAdapterBase):
     configIntLogger = "logger_name"
     configSlurmName = "site_name"
-    configSlurmConstraint = "slurm_constraint"
-    configSlurmUser = "slurm_user"
-    configSlurmKey = "slurm_key"
-    configSlurmServer = "slurm_server"
     configSlurmWaitPD = "slurm_wait_pd"
     configSlurmPartition = "slurm_partition"
     configSlurmWaitWorking = "slurm_wait_working"
@@ -78,20 +75,6 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
         self.addOptionalConfigKeys(self.configIntLogger, Config.ConfigTypeString,
                                    description="logger name",
                                    default="Slurm_Int")
-        self.addOptionalConfigKeys(self.configSlurmConstraint, Config.ConfigTypeString,
-                                   description="ClassAd constraint to filter machines in slurm_status",
-                                   default="True")
-        self.addOptionalConfigKeys(key=self.configSlurmUser, datatype=Config.ConfigTypeString,
-                                   description="Login name for slurm collector server.",
-                                   default=getpass.getuser())
-        self.addOptionalConfigKeys(key=self.configSlurmServer, datatype=Config.ConfigTypeString,
-                                   description="Hostname of collector server. If machines are connected to connector "
-                                               "and have commandline interface installed, localhost can easily be used "
-                                               "because we query with \"global\".",
-                                   default="localhost")
-        self.addOptionalConfigKeys(key=self.configSlurmKey, datatype=Config.ConfigTypeString,
-                                   description="Path to SSH key for remote login. Not necessary with server localhost.",
-                                   default="~/")
         self.addCompulsoryConfigKeys(self.configSlurmPartition, Config.ConfigTypeString, description="Slurm Partition name")
         self.addCompulsoryConfigKeys(self.configSlurmName, Config.ConfigTypeString, description="Site name")
         self.addOptionalConfigKeys(self.configSlurmWaitPD, Config.ConfigTypeInt,
@@ -215,7 +198,7 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
         # check machine registry
         for mid in self.mr.getMachines(self.siteName):
             machine_ = self.mr.machines[mid]
-            
+
             # Is an "Integrating" machine completely started up? (appears in slurm) -> "Working"
             if machine_[self.mr.regStatus] == self.mr.statusIntegrating:
                 self.logger.debug("Node in Moab=%s", machine_[self.reg_site_server_node_name])
@@ -236,11 +219,11 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
                     # update slurm slot status
                     self.logger.debug("update slurm slot status: %s" % slurm_machines[self.getSlurmHostname(machine_[self.mr.regHostIp])])
                     self.mr.machines[mid][self.reg_site_slurm_status] = slurm_machines[self.getSlurmHostname(machine_[self.mr.regHostIp])]
-                    
+
                     # Update machineLoad
                     load = self.calcMachineLoad(mid)
                     self.logger.debug("Machine load: %s" % load)
-                    
+
                     #if self.calcMachineLoad(mid) <= 0.01 and self.mr.calcLastStateChange(mid) > slurm_wait_working:
                     #    self.logger.debug("Working machine but without load -> statusPendingDisintegration")
                     #    self.mr.updateMachineStatus(mid, self.mr.statusPendingDisintegration)
@@ -253,7 +236,7 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
 
                 #else: just do not do anything??
                     # Machine disappeared : this appears to be problematic with different partitions !!
-                    # because the if condition fails: since the machine might be working but does not 
+                    # because the if condition fails: since the machine might be working but does not
                     # appear in to slurm_machines (why exactly?)
                     # maybe this is just wrong indentation??
                 #    self.logger.debug("Working machine disappeared -> statusDisintegrating")
@@ -317,17 +300,6 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
                 if self.mr.machines[evt.id].get(self.mr.regSite) == self.siteName:
                     self.mr.updateMachineStatus(evt.id, self.mr.statusIntegrating)
 
-    def parse_sinfo_output(self,output):
-        nlist = []
-        for line in output.splitlines():
-            if line.split(',')[0] not in nlist:
-                nlist.append(line.split(','))
-        return nlist
-
-
-
-
-
     @property
     def description(self):
         return "SlurmIntegrationAdapter"
@@ -340,101 +312,64 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
 
         :return: slurm_machines
         """
-
-        # load the connection settings from config
-        slurm_server = self.getConfig(self.configSlurmServer)
-        slurm_user = self.getConfig(self.configSlurmUser)
-        slurm_key = self.getConfig(self.configSlurmKey)
-        slurm_ssh = ScaleTools.Ssh(slurm_server, slurm_user, slurm_key)
+        # load the partition info from config
         slurm_partition = self.getConfig(self.configSlurmPartition)
 
 
         self.logger.debug("Getting slurmList for jobs requested on partition {}".format(slurm_partition))
-
 
         #this outputs those nodes which are used by a job of this queue. It ignores most "down", "drained" and "draining" machines
         #in addition, one could just get the machines which are draining or drained. It might not matter which service cancels the job
         #first determine the list of nodes, then make the ssh call for each of them again for sinfo
 
         # Find all nodes assigned a job in this particular slurm_partition queue
-        cmd = ("squeue -p {} -h --format=%N  | sort | uniq".format(slurm_partition))
-        nodes_from_squeue = slurm_ssh.handleSshCall(call=cmd, quiet=True)
-        if len(nodes_from_squeue) <=1 :
-            nodes_this_partition = []
-        else: 
-            nodes_this_partition = nodes_from_squeue[1].split('\n')
-
-        self.logger.debug("Querying information for these nodes {}".format( nodes_this_partition))
-
-        slurm_result_status = 0
-        slurm_result_sinfos = ""
-        slurm_ssh_error = ""
-        for nn in nodes_this_partition:
-            if nn == "":
-                continue
-            # for each of these nodes, query its sinfo status 
-            #     in the form <hostname>,<CPU-State: allocated/idle/other/total>,<host state>
-            cmd =  ("sinfo -h -l -N -p {} -n {} --format %n,%C,%T" ).format( slurm_partition , nn)
-            slurm_result_nn = slurm_ssh.handleSshCall(call=cmd, quiet=True)
-            slurm_result_status += slurm_result_nn[0]
-            slurm_result_sinfos += slurm_result_nn[1] + "\n"
-            slurm_ssh_error += str( slurm_result_nn[2] )
-
-        
-        #put slurm_result together in the way it is needed:
-        slurm_result = (slurm_result_status,  slurm_result_sinfos , slurm_ssh_error)
-        self.logger.debug("slurm_result: {}".format(slurm_result))
-
-        # get a list of the slurm machines (SSH)
-        slurm_ssh.debugOutput(self.logger, "EKP-manage", slurm_result)
-
-
-
-        if slurm_result[0] != 0:
-            raise ValueError("SSH connection to Slurm collector could not be established.")
-        #elif self.collector_error_string in slurm_result[1]:
-        #    raise ValueError("Collector(s) didn't answer.")
-        
-        # Example Output: <hostname>,<CPU-State: allocated/idle/other/total>
-        # host-10-18-1-0,0/0/4/4
-                
-        # prepare list of slurm machines
-        logging.debug("Trying to parse sinfo output" )
-        tmp_slurm_machines=self.parse_sinfo_output(slurm_result[1])
+        #cmd = ("squeue -p {} -h --format=%N  | sort | uniq".format(slurm_partition))
 
         slurm_machines = defaultdict(list)
-        for node in tmp_slurm_machines:
-            
-            # ignore invalid lines
-            if len(node) != 3:
+
+        node_list = set()
+        try:
+            jobs = pyslurm.job().get()
+        except ValueError as e:
+            self.logger.warning("Could not get slurm queue status! {}".format(e))
+            return slurm_machines
+
+        jobs = {k: v for k, v in jobs.items() if v['partition'] == slurm_partition}
+        for job in jobs.values():
+            node_list.add(job['nodes'])
+        node_list.discard(None)  # discard jobs which are not assigned to a node yet
+        node_list = sorted(node_list)  # sort and convert to list
+
+        self.logger.debug("Querying information for these nodes {}".format(nodes_this_partition))
+
+        try:
+            slurm_node_info = pyslurm.node().get()
+        except ValueError as e:
+            self.logger.warning("Could not get node info! {}".format(e))
+            return slurm_machines
+
+        for machine_name in node_list:
+            node_info = slurm_node_info[machine_name]
+
+            totalCPUs = node_info['cpus']
+            allocatedCPUs = node_info['alloc_cpus']
+            idleCPUs = totalCPUs - allocatedCPUs  # cannot retrieve directly from pyslurm
+            state = node_info['state']
+
+            # ignore down machines:
+            if "DOWN" in state:
                 continue
-
-            machine_name=node[0]
-            cpus=node[1].split('/')
-            state=node[2]
-
-            # ignore down machines: host-10-18-1-50,0/0/4/4,down* 
-            if "down" in state:
-                continue
-
-            #ignore machines with no allocated and idle cpus
-            #if int(cpus[0]) == 0 and int(cpus[1]) == 0:
-            #    continue
-
-            allocatedCPUs = int(cpus[0])
-            idleCPUs = int(cpus[1])
-            totalCPUs = int(cpus[3])
 
             for slot in range(totalCPUs):
                 if allocatedCPUs > 0:
                     slurm_machines[machine_name].append(['allocated', None])
-                    allocatedCPUs = allocatedCPUs - 1
+                    allocatedCPUs -= 1
                 elif idleCPUs > 0:
                     slurm_machines[machine_name].append(['idle', None])
-                    idleCPUs = idleCPUs - 1
-                elif "draining" in state:
+                    idleCPUs -= 1
+                elif "DRAINING" in state:
                     slurm_machines[machine_name].append(['draining', None])
-                elif "drained" in state:
+                elif "DRAINED" in state:
                     slurm_machines[machine_name].append(['drained', None])
                 else:
                     print "WARNING!!! this is a bug!"
