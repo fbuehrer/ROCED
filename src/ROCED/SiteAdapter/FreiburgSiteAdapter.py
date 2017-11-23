@@ -380,6 +380,13 @@ class FreiburgSiteAdapter(SiteAdapterBase):
                     #self.mr.updateMachineStatus(mid, self.mr.statusUp)
                     self.mr.updateMachineIp(mid, ip)
                     print "IP=" + str(ip)
+		
+                try:
+                    ip = frJobsRunning[batchJobId]['IP']
+                except:
+                    self.logger.warning("Couldn't update machine IP. Removing")
+                    self.mr.removeMachine(mid)
+		    continue
                 self.logger.debug("Moab Job ID: {}. IP: {}. Status: {}.".format(batchJobId, ip, mr[mid][self.mr.regStatus] )  )
 
                 try:
