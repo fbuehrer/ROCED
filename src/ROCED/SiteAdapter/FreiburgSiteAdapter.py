@@ -361,6 +361,7 @@ class FreiburgSiteAdapter(SiteAdapterBase):
             frJobsCompleted = {}
 
         mr = self.getSiteMachines()
+	self.logger.info("Number of site machines before any magic happens: {}".format(len(mr)))
         #self.logger.debug( mr) #tmi
         self.logger.debug("Currently registered machines:")
         for mid in mr:
@@ -379,7 +380,6 @@ class FreiburgSiteAdapter(SiteAdapterBase):
                 if ip != '':
                     #self.mr.updateMachineStatus(mid, self.mr.statusUp)
                     self.mr.updateMachineIp(mid, ip)
-                    print "IP=" + str(ip)
 		
                 try:
                     ip = frJobsRunning[batchJobId]['IP']
@@ -441,7 +441,7 @@ class FreiburgSiteAdapter(SiteAdapterBase):
 
         # All remaining unaccounted batch jobs
         for batchJobId in frJobsRunning:
-            print "remaining batchJobId=" + str(batchJobId)
+            self.logger.info("remaining batchJobId={}".format(batchJobId))
             mid = self.mr.newMachine()
             # TODO: try to identify machine type, using cores & wall-time
             self.mr.machines[mid][self.mr.regSite] = self.siteName
@@ -460,6 +460,16 @@ class FreiburgSiteAdapter(SiteAdapterBase):
                 print "IP=" + str(ip)
             else:
                 self.mr.updateMachineStatus(mid, self.mr.statusBooting)
+        for batchJobId in frJobsIdle:
+
+	    self.logger.info("remaining batchJobId (idling)=" + str(batchJobId))
+	    mid = self.mr.newMachine()
+	    self.mr.machines[mid][self.mr.regSite] = self.siteName
+	    self.mr.machines[mid][self.mr.regSiteType] = self.siteType
+	    self.mr.machines[mid][self.mr.regMachineType] = self.__default_machine
+	    self.mr.machines[mid][self.regMachineJobId] = batchJobId
+	    self.mr.machines[mid][self.reg_site_server_node_name] = self.__getVMName(batchJobId)
+	    self.mr.updateMachineStatus(mid, self.mr.statusBooting)
 
 
         self.logger.info("Machines using resources (Freiburg): %d" % self.cloudOccupyingMachinesCount)
@@ -569,6 +579,7 @@ class FreiburgSiteAdapter(SiteAdapterBase):
         if frResult[0] == 0:
             # returns a dict: {batch job id: return code/status, ..}
             itemlist = minidom.parseString(frResult[1]).getElementsByTagName('job')
+            self.logger.info("Found {} lines in XML".format(len(itemlist)))
 
             for line in itemlist:
                 if line.attributes['State'].value == "Idle":
@@ -606,6 +617,7 @@ class FreiburgSiteAdapter(SiteAdapterBase):
 
                     jobsIdle.append(line.attributes['JobID'].value)
     
+    	self.logger.info("Found {} idle and {} running jobs in XML ({} total)".format(len(jobsIdle),len(jobsRunning),len(jobsIdle)+len(jobsRunning)))
         return {'jobsIdle': jobsIdle, 'jobsRunning': jobsRunning}
     
     @property
