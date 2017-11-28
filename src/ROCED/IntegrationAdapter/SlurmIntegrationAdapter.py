@@ -340,7 +340,7 @@ class SlurmIntegrationAdapter(IntegrationAdapterBase):
         node_list.discard(None)  # discard jobs which are not assigned to a node yet
         node_list = sorted(node_list)  # sort and convert to list
 
-        self.logger.debug("Querying information for these nodes {}".format(nodes_this_partition))
+        self.logger.debug("Querying information for these nodes {}".format(node_list))
 
         try:
             slurm_node_info = pyslurm.node().get()

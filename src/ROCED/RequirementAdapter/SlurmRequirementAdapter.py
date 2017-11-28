@@ -74,7 +74,7 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
         required_cpus_running_jobs = 0
         cpus_dependency_jobs = 0
 
-        for job in jobs:
+        for job in jobs.values():
             if "Dependency" in job['state_reason']:
                 cpus_dependency_jobs += job['pn_min_cpus']
             elif "PartitionTimeLimit" in job['state_reason']:
@@ -85,18 +85,20 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
             elif "RUNNING" in job['job_state']:
                 required_cpus_total += job['pn_min_cpus']
                 required_cpus_running_jobs += job['pn_min_cpus']
+            elif "CANCELLED" in job['job_state']:
+                pass
             else:
                 self.logger.warning("Unknown job state: %s. Ignoring.", job['job_state'])
 
 
         self.logger.debug("Slurm queue: Idle: %d; Running: %d. in partition: %s." %
-                          (required_cpus_idle_jobs, required_cpus_running_jobs, self.getConfig(self.configSlurmPartition) ))
+                (required_cpus_idle_jobs, required_cpus_running_jobs, self.getConfig(self.configSlurmPartition) ))
 
         # cores->machines: machine definition required for RequirementAdapter
         n_cores = - int(self.getConfig(self.configMachines)[self.getNeededMachineType()]["cores"])
         self._curRequirement = - (required_cpus_total // n_cores)
 
-	self.logger.debug("Required CPUs total=%s" % required_cpus_total)
+        self.logger.debug("Required CPUs total=%s" % required_cpus_total)
         self.logger.debug("Required CPUs idle Jobs=%s" % required_cpus_idle_jobs)
         self.logger.debug("Required CPUs running Jobs=%s" % required_cpus_running_jobs)
         self.logger.debug("CPUs dependency Jobs=%s" % cpus_dependency_jobs)
