@@ -24,6 +24,7 @@ from __future__ import unicode_literals, absolute_import
 
 import getpass
 import logging
+import pyslurm
 
 from Core import Config
 from RequirementAdapter.Requirement import RequirementAdapterBase
@@ -32,24 +33,7 @@ from Util.PythonTools import Caching
 
 class SlurmRequirementAdapter(RequirementAdapterBase):
     configMachines = "machines"
-    configSlurmUser = "slurm_user"
-    configSlurmKey = "slurm_key"
-    configSlurmServer = "slurm_server"
-    configSlurmRequirement = "slurm_requirement"
-    configSlurmConstraint = "slurm_constraint"
     configSlurmPartition = "slurm_partition"
-
-    # See https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=MagicNumbers
-    condorStatusIdle = 1
-    condorStatusRunning = 2
-
-    # class constants for condor_q query:
-    _query_constraints = "RoutedToJobId =?= undefined && ( JobStatus == %d || JobStatus == %d )" % \
-                         (condorStatusIdle, condorStatusRunning)
-    # auto-format string: raw output, separated by comma
-    _query_format_string = "-autoformat:r, JobStatus RequestCpus Requirements"
-
-    _CLI_error_strings = frozenset(("Failed to fetch ads from", "Failed to end classad message"))
 
     def __init__(self):
         """Requirement adapter, connecting to an Slurm batch system."""
@@ -58,23 +42,6 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
         self.setConfig(self.configMachines, dict())
         self.addCompulsoryConfigKeys(self.configMachines, Config.ConfigTypeDictionary)
         self.addCompulsoryConfigKeys(key=self.configSlurmPartition, datatype=Config.ConfigTypeString, description="Slurm Partition name")
-        self.addOptionalConfigKeys(key=self.configSlurmUser, datatype=Config.ConfigTypeString,
-                                   description="Login name for slurm collector server.",
-                                   default=getpass.getuser())
-        self.addOptionalConfigKeys(key=self.configSlurmServer, datatype=Config.ConfigTypeString,
-                                   description="Hostname of collector server. If machines are connected to connector "
-                                               "and have commandline interface installed, localhost can easily be used "
-                                               "because we query with \"global\".",
-                                   default="localhost")
-        self.addOptionalConfigKeys(key=self.configSlurmKey, datatype=Config.ConfigTypeString,
-                                   description="Path to SSH key for remote login (not necessary with localhost).",
-                                   default="~/")
-        self.addOptionalConfigKeys(key=self.configSlurmRequirement, datatype=Config.ConfigTypeString,
-                                   description="Grep filter string on ClassAd Requirement expression",
-                                   default="")
-        self.addOptionalConfigKeys(key=self.configSlurmConstraint, datatype=Config.ConfigTypeString,
-                                   description="ClassAd constraint in condor_q expression",
-                                   default="True")
 
         self.logger = logging.getLogger("SlurmReq")
         self.__str__ = self.description
@@ -89,68 +56,54 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
     @property
     @Caching(validityPeriod=-1, redundancyPeriod=900)
     def requirement(self):
-        ssh = ScaleTools.Ssh(host=self.getConfig(self.configSlurmServer),
-                             username=self.getConfig(self.configSlurmUser),
-                             key=self.getConfig(self.configSlurmKey))
-
-        # Target.Requirements can't be filtered with -constraints since it would require ClassAd based regex matching.
-        # TODO: Find a more generic way to match resources/requirements (condor_q -slotads ??)
-        # cmd_idle = "condor_q -constraint 'JobStatus == 1' -slotads slotads_bwforcluster " \
-        #            "-analyze:summary,reverse | tail -n1 | awk -F ' ' " \
-        #            "'{print $3 "\n" $4}'| sort -n | head -n1"
-        #constraint = "( %s ) && ( %s )" % (self._query_constraints, self.getConfig(self.configCondorConstraint))
-
-        #cmd = ("condor_q -global -allusers -nobatch -constraint '%s' %s" % (constraint, self._query_format_string))
-        #cmd = 'squeue -p nemo_vm_atlsch --noheader --format="%T %r %c"'
         self.logger.info("Checking requirements in partition {}".format( self.getConfig(self.configSlurmPartition) ))
-        cmd = 'squeue -p {} --noheader --format="%T %r %c"'.format(self.getConfig( self.configSlurmPartition))
-        result = ssh.handleSshCall(call=cmd, quiet=True)
-        if result[0] != 0:
-            self.logger.warning("Could not get Slurm queue status! %d: %s" % (result[0], result[2]))
-            return None
-        elif any(error_string in result[1] for error_string in self._CLI_error_strings):
-            self.logger.warning("squeue request timed out.")
+
+        # cmd = 'squeue -p {} --noheader --format="%T %r %c"'.format(self.getConfig( self.configSlurmPartition))
+        try:
+            jobs = pyslurm.job().get()
+        except ValueError as e:
+            self.logger.warning("Could not get Slurm queue status! %s" % e)
             return None
 
+        jobs = {k: v for k, v in jobs.items() if v['partition'] == self.getConfig(self.configSlurmPartition)}
+        if len(jobs) == 0:
+            return None
 
         required_cpus_total = 0
         required_cpus_idle_jobs = 0
         required_cpus_running_jobs = 0
         cpus_dependency_jobs = 0
 
-        for line in result[1].splitlines():
-            values = line.split()
-            #self.logger.debug(values)
-
-            if len(values) != 3:
-                continue
-
-            if "Dependency" in values[1]:
-                cpus_dependency_jobs = cpus_dependency_jobs + int(values[2])
-                continue
-	    if "PartitionTimeLimit" in values[1]:
-		continue
-            elif "PENDING" in  values[0]:
-                required_cpus_total = required_cpus_total + int(values[2])
-                required_cpus_idle_jobs = required_cpus_idle_jobs + int(values[2])
-                continue
-            elif "RUNNING" in values[0]:
-                required_cpus_total = required_cpus_total + int(values[2])
-                required_cpus_running_jobs = required_cpus_running_jobs + int(values[2])
-                continue
+        for job in jobs.values():
+            if "Dependency" in job['state_reason']:
+                cpus_dependency_jobs += job['pn_min_cpus']
+            elif "PartitionTimeLimit" in job['state_reason']:
+                pass
+            elif "PENDING" in  job['job_state']:
+                # Get the number of jobs in a job array.
+                # For running jobs this is no problem, because each job in a job array gets its own job id.
+                # However, for pending job arrays all jobs are grouped with one ID.
+                # The only possiblity to extract the number of jobs in a job array is to parse the 'array_task_str' property.
+                job_array_count = self.get_job_array_count(job['array_task_str'])
+                required_cpus_total += job['pn_min_cpus'] * job_array_count
+                required_cpus_idle_jobs += job['pn_min_cpus'] * job_array_count
+            elif "RUNNING" in job['job_state']:
+                required_cpus_total += job['pn_min_cpus']
+                required_cpus_running_jobs += job['pn_min_cpus']
+            elif "CANCELLED" in job['job_state']:
+                pass
             else:
-                self.logger.warning("unknown job state: %s. Ignoring.", values[0])
-             
+                self.logger.warning("Unknown job state: %s. Ignoring.", job['job_state'])
 
 
         self.logger.debug("Slurm queue: Idle: %d; Running: %d. in partition: %s." %
-                          (required_cpus_idle_jobs, required_cpus_running_jobs, self.getConfig(self.configSlurmPartition) ))
+                (required_cpus_idle_jobs, required_cpus_running_jobs, self.getConfig(self.configSlurmPartition) ))
 
         # cores->machines: machine definition required for RequirementAdapter
         n_cores = - int(self.getConfig(self.configMachines)[self.getNeededMachineType()]["cores"])
         self._curRequirement = - (required_cpus_total // n_cores)
 
-	self.logger.debug("Required CPUs total=%s" % required_cpus_total)
+        self.logger.debug("Required CPUs total=%s" % required_cpus_total)
         self.logger.debug("Required CPUs idle Jobs=%s" % required_cpus_idle_jobs)
         self.logger.debug("Required CPUs running Jobs=%s" % required_cpus_running_jobs)
         self.logger.debug("CPUs dependency Jobs=%s" % cpus_dependency_jobs)
@@ -167,4 +120,43 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
             return machineType
         else:
             self.logger.error("No machine type defined for requirement.")
+
+    def get_job_array_count(self, job_array_str):
+        """Parse the 'array_task_str' property and extract the number of jobs in a job array.
+
+        Job arrays can be specified by a list of individual job array indices or ranges of job array indices.
+        The list is separated by commas (,) and the ranges are given with a minus sign (-).
+        Furthermore, the maximum number of jobs which should run simultaneosly can be specified with a percent sign (%)
+        followed by the number of simultaneous jobs.
+
+        This list shows some example job array specifications and the number of jobs this function will return:
+
+          - "1-20"        -> 20
+          - "1-10,15-20"  -> 16
+          - "1,3,5"       ->  3
+          - "1-7%3"       ->  3
+          - "1-7,10-15%3" ->  3
+          - "1,3,5,7%3"   ->  3
+          - None          ->  1   # job is not a job array
+
+
+        More information about job array can be found at https://slurm.schedmd.com/job_array.html
+        """
+        # if job is no job array the 'array_task_str' property is None
+        if job_array_str is None:
+            return 1
+
+        # check if number of concurrent jobs is set by user
+        if "%" in job_array_str:
+            return int(job_array_str.split("%")[1])
+
+        # parse list of ranges
+        total_count = 0
+        for job_range in job_array_str.split(","):
+            if "-" in job_range:
+                job_min, job_max = job_range.split("-")
+                total_count += int(job_max) - int(job_min) + 1
+            else:
+                total_count += int(job_range)
+        return total_count
 
