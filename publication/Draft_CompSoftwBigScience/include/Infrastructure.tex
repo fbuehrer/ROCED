@@ -1,0 +1,43 @@
+\textit{Motivation for virtualized approach (increase the number of potential
+user groups without increasing the administrative effort); virtualized
+research environments; description of infrastructure for virtualized research environments
+(OpenStack, startVM etc) on NEMO }
+
+The computer center of the University of Freiburg provides reasonably scaled research
+infrastructures like cloud, storage and especially HPC to cater to the needs of various
+scientific communities. To operate systems comprised of more than 1000 inidividual nodes
+with a small group significant standardization in hardware and software is necessary. To
+address the particular needs of individual scientific communities and research groups the
+computer is participating in a state-wide HPC federation and cooperating with other
+computer centers within the bwHPC-C5 project. The bwForCluster NEMO is focusing on the
+domains of neuroscience, microsystems technology and particle physics, offering its
+services to all reasearchers of these fields working at one of the nine Baden-Wuerttemberg
+universities. The level of granularity of the software stack provided is not fine enough to
+directly support the quite special requirements of world-wide efforts like the ATLAS or CMS
+experiments. To utilize the system optimally and open the cluster to as many different
+needs as possible without overstretching its own man power novel approaches were
+necessary. Thus, the eScience group pooled in it's expertise in cloud operation especially
+the use of OpenStack as a cloud platform to provide a more flexible software deployment
+on the cluster beside the existing module system.
+ The state sponsored E-Research-Initiative on virtualized research environments (VREs)
+provided the perfect environment to bring together both the infrastructure providers like
+the computer center and selected research communities e.g. in the two year ViCE project.
+The CMS and ATLAS groups cooperate in this project or as a bwHPC-C5 tiger team to tackle
+the particular challenges of VREs like provisioning, setup, scheduling and decommissioning.
+A VRE in the context of this paper is a complete software stack as it would get installed on a
+compute cluster fitted to ATLAS or CMS groups demand. The resulting filesystem is a
+container presented as a single file. From the computer center's perspective this container
+is seen as a black box requiring no involvement or efforts. From the researchers
+perspective the VRE is an individual (virtual) server where everything from the hardware --
+at least to a certain degree like CPU or RAM dimensioning -- up to the operating system,
+applications and configurations can be controlled solely by the research groups.
+To allow more flexible software environments the standard bare metal operation the NEMO
+cluster got extended with a parallel installation of OpenStack components \cite{hpc-symp:2016}. They are getting orchestrated from a special management node which
+provides the necessary interfaces to the other services. The NEMO cluster as it's siblings
+throughout the state use Adaptive's MOAB as a scheduler of compute jobs. To allow
+seemless coexistence of both bare metal and virtualied jobs the scheduler has to handle
+both of them. As the scheduler does not look into the VRE virtual machines, it cannot assess
+if they are actually active or idle. To solve this, a customized glue component got introduced
+(to be described in further detail in section XX). The virtual machines started and stopped bythe OpenStack nova(?) components triggered by ??. 
+
+$<$Michael, hier wollen wir evtl. noch etwas mehr dazu sagen!?$>$

@@ -1,0 +1,50 @@
+
+
+
+
+A system for the dynamic, on-demand provisioning of virtual machines
+to run jobs in a High-Energy Physics context on an external, not
+dedicated resource as realized at the HPC
+cluster ``NEMO'' at University of Freiburg has been described. 
+Reasons for the need for an interface between the schedulers of the host system
+and the external system from which requests are sent have been
+explained. 
+The performance and usage have been analyzed for two groups. 
+
+This approach can be generalized to other platforms and possibly also
+other forms of virtualized environments (containers).
+
+
+Using virtualization inside an HPC system opens up the possibilities for several interesting
+features. While their implementation would require tighter integration between HPC
+scheduler
+and virtualization framework, they could solve several classic problems with HPC systems,
+especially those designated for novice HPC users.
+Snapshot and migration functionality for running virtual machine instances are a typical
+feature of virtualization frameworks. This means that running processes can be stopped,
+possibly
+moved to a different node in the virtualization cluster and then resumed. For an HPC
+system,
+this would be practical for two use cases. The first one concerns long running monolithic
+jobs.
+These are, for very practical reasons, non favored jobs in HPC environments, assuming they
+are permitted in the first place. However, the costs to adapt a particular workflow based on
+such monolithic tasks to a HPC system, e.g. by parallelizing and partitioning it manually,
+may sometimes exceed the practical use of the resulting solution. If the monolithic job
+could
+automatically be stopped, checkpointed and resumed at regular intervals, this might very
+well
+constitute a more economic procedure. In the second use case, if there is a mix of
+pleasingly
+parallel high throughput jobs (using only single cores or nodes) and massively parallel high
+performance jobs (using several nodes), the second class of jobs should be concentrated on
+nodes that share optimal high performance network communication paths. Typically this is
+accomplished by high investments in the network topology or
+sophisticated tuning of the
+job
+queue. However, if jobs could be moved around the physical machines (i.e. ”de
+fragmented”),
+optimal high performance network communication paths can be guaranteed by
+concentrating
+massively parallel jobs on the same or adjacent high performance network switches.
+
