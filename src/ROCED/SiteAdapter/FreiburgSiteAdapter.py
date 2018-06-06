@@ -366,6 +366,18 @@ class FreiburgSiteAdapter(SiteAdapterBase):
         self.logger.debug("Currently registered machines:")
         for mid in mr:
             batchJobId = mr[mid][self.regMachineJobId]
+	    # First check if machine is idle moab job:
+	    if batchJobId in frJobsIdle:
+		print 'before {}'.format(len(frJobsIdle))
+		self.logger.info('Found idle job {}. Continuing'.format(batchJobId))
+                try:
+		    self.logger.info('Removed {}.'.format(batchJobId))
+		    frJobsIdle.pop(batchJobId)
+		except:
+		    pass
+		print 'after {}'.format(len(frJobsIdle))
+		continue
+
             #print "mid =" + str(mid)
             # Status handled by Integration Adapter
 
