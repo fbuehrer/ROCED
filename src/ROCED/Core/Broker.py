@@ -132,6 +132,8 @@ class StupidBroker(SiteBrokerBase):
                         toSpawn = 0
 
         # shutdown
+	if toSpawn < 0:
+	    return siteOrders #Never shut down machines / remove from queue. not working right now!!!
         for mName, toSpawn in machinesToSpawn.items():
             for site in expensiveFirst:
                 if toSpawn < 0:
