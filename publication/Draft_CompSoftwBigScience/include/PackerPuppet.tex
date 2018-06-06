@@ -1,0 +1,7 @@
+
+One approach to generating the image is the open-source tool
+\texttt{packer}\cite{packer}, interfaced to \texttt{puppet}\cite{puppet}.
+\texttt{packer} allows to configure an image based on an \texttt{.iso} file using a kickstart [ref] fine and flexible script-based configuration. 
+It also provides an interface to \texttt{puppet} making it a convenient tool if an existing \texttt{puppet} role is to be used for the images. If the roles are defined according to the hostname of the machine as is conventional in \texttt{puppet} with \texttt{hieradata}, the hostname needs to be set in the scripts supplied to \texttt{packer}. Propagation of certificates require an initial manual start of a machine with the same hostname to allow handshake signing of the certificate from the \texttt{puppet} server.
+
+\textit{setting hostname to get correct role from puppet; puppet certificates; anything else? }

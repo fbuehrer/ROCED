@@ -1,0 +1,51 @@
+Alternatively to the approach in Sec.~\ref{sec:ROCED:HTCondor}, the
+scheduler \textsc{Slurm} has been incorporated into the ROCED setup by
+a group at University of Freiburg.
+While \textsc{Slurm} provides a built-in functionality for dynamic
+startup of resources in the \textit{Slurm Elastic Computing} module\cite{SlurmElastic}. 
+However, this is not suitable for resources which are not
+expected to be available nearly instantaneously, in this case due to
+the presence of a queue in the host system which may postpone the start
+of a resource by a significant, varying period.
+In addition, the transfer of information from one scheduler the the
+other, and therefore to the user, is very limited.
+Therefore, ROCED has been chosen as the interface between the
+\textsc{Moab} scheduler on the host system and the \textsc{Slurm}
+scheduler on the submission side.
+
+For \textsc{Slurm}, it is necessary that each potential virtual
+machine is registered in the configuration at the time of start of the
+slurm server as well as the client. \textsc{Slurm} configurations also
+need to be in agreement between server and client.
+Therefore, a range of hostnames is registered in the configuration in
+a way that is mapped to potential IP addresses of virtual machines.
+These virtual machines have a fixed number of CPUs and memory and are
+registered under a certain partition.
+When a job is submitted to this partition and no other resource is
+available, information from the \textsc{Slurm} \texttt{squeue} and
+\texttt{sinfo} commands is requested and parsed in such a way to
+obtain the amount of requested information.
+
+Since the ATLAS Freiburg group comprises three sub-groups, each mapped
+to a different account on \textsc{Moab}/ NEMO, special care is taken to
+avoid interference of resources used by another account, while
+allowing jobs from one group to occupy otherwise idle resources of another group.
+
+
+ROCED determines the amount of VMs to be started and sends the
+corresponding startVM commands to \textsc{Moab}.
+After the virtual machine has booted, the hostname is set to the IP
+dependent name which is known to the \textsc{Slurm} configuration.
+A cron job executes a few sanity
+checks on the system.
+Upon successful execution of these tests, the \textsc{Slurm} client
+running in the VM starts accepting the queued jobs.
+After completion of the jobs and a certain period of being idle, the
+\textsc{Slurm} client in the machine drains itself and the machine
+shuts itself down.
+The IP address as well as the corresponding hostname in \textsc{Slurm}
+are then released and can be used again.
+
+
+
+
