@@ -62,6 +62,10 @@ class RequirementAdapterBase(AdapterBase):
         """Return numbers of machine(s) required (integer) or None (Bool) if error."""
         return self._curRequirement
 
+    def getMaxWalltime(self):
+        """Return the current maximum walltime of queued jobs"""
+        return self._curMaxWalltime
+
     @requirement.setter
     def requirement(self, requirement_):
         """External "Set requirement". Primarily intended for RPC API.
@@ -80,6 +84,15 @@ class RequirementBox(AdapterBoxBase):
     def __init__(self):
         super(RequirementBox, self).__init__()
         self.reqCache = {}
+
+    def getMaxWalltime(self):
+        maxWalltime = -1
+        for adapter in self._adapterList:
+            try:
+                if adapter._curMaxWalltime > maxWalltime: maxWalltime = adapter._curMaxWalltime
+            except:
+                continue
+        return maxWalltime
 
     def getMachineTypeRequirement(self, fromCache=False):
         """Calculate list of required machines per machine type

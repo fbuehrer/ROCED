@@ -100,7 +100,7 @@ class SiteAdapterBase(AdapterBase):
         pass
 
     @abc.abstractmethod
-    def spawnMachines(self, machineType, count):
+    def spawnMachines(self, machineType, count,walltime = -1):
         # type: (str, int) -> None
         """Spawn machines on the corresponding cloud site.
 
@@ -149,12 +149,13 @@ class SiteAdapterBase(AdapterBase):
         """
         return self.mr.getMachines(self.siteName, status, machineType)
 
-    def applyMachineDecision(self, decision):
+    def applyMachineDecision(self, decision,walltime):
 
         decision = copy.deepcopy(decision)
         running_machines_count = self.runningMachinesCount
         max_machines = self.getConfig(self.ConfigMaxMachines)
         self.logger.debug("running_machines_count=%s" % running_machines_count)
+        self.logger.info('walltime = {}'.format(walltime))
         for (machine_type, n_machines) in decision.items():
             # calc relative value when there are already machines running
             n_running_machines = 0
@@ -175,9 +176,9 @@ class SiteAdapterBase(AdapterBase):
                     decision[machine_type] = max_machines - n_running_machines
                     # is the new decision valid?
                     if decision[machine_type] > 0:
-                        self.spawnMachines(machine_type, decision[machine_type])
+                        self.spawnMachines(machine_type, decision[machine_type],walltime)
                 else:
-                    self.spawnMachines(machine_type, decision[machine_type])
+                    self.spawnMachines(machine_type, decision[machine_type],walltime)
 
             # terminate
             elif decision[machine_type] < 0:
@@ -333,8 +334,8 @@ class SiteBox(AdapterBoxBase):
         else:
             return None
 
-    def applyMachineDecision(self, decision):
-        [x.applyMachineDecision(decision.get(x.siteName, dict())) for x in self._adapterList]
+    def applyMachineDecision(self, decision,walltime):
+        [x.applyMachineDecision(decision.get(x.siteName, dict()),walltime) for x in self._adapterList]
 
     def modServiceMachineDecision(self, decision):
         # type: (dict) -> dict

@@ -97,6 +97,7 @@ class FreiburgSiteAdapter(SiteAdapterBase):
         self.logger = logging.getLogger(self.getConfig(self.configSiteLogger))
         self.__readVMNamePrefix()
         super(FreiburgSiteAdapter, self).init()
+        self.maxWalltimeCurrent = '02:00:00:00'
 
         self.logger.debug("Init() FreiburgSiteAdapter")
 
@@ -156,7 +157,13 @@ class FreiburgSiteAdapter(SiteAdapterBase):
                 self.mr.updateMachineStatus(mid, self.mr.statusBooting)
         self.logger.debug("Content of machine registry:\n%s" % self.getSiteMachines())
 
-    def spawnMachines(self, machineType, count):
+    def setMaxWalltimeCurrent(self,walltime):
+        self.maxWalltimeCurrent = walltime
+
+    def getMaxWalltimeCurrent(self):
+        return self.maxWalltimeCurrent
+
+    def spawnMachines(self, machineType, count, walltime = -1):
         """Request machines in Freiburg via batch job containing startVM script.
 
         Batch job configuration is done via config file.
@@ -166,17 +173,18 @@ class FreiburgSiteAdapter(SiteAdapterBase):
         :param count:
         :return:
         """
-        super(FreiburgSiteAdapter, self).spawnMachines(machineType, count)
+        super(FreiburgSiteAdapter, self).spawnMachines(machineType, count, walltime=-1)
 
         maxMachinesPerCycle = self.getConfig(self.configMaxMachinesPerCycle)
         machineSettings = self.getConfig(self.ConfigMachines)[machineType]
+        if walltime < 0: walltime = machineSettings['walltime']
 
         if count > maxMachinesPerCycle:
             self.logger.info("%d machines requested, limited to %d for this cycle." % (count, maxMachinesPerCycle))
             count = maxMachinesPerCycle
         for i in range(count):
             # send batch jobs to boot machines
-            result = self.__execCmdInFreiburg("msub -m p -l walltime=%s,mem=%s,nodes=1:ppn=%d %s" % (machineSettings["walltime"], machineSettings["memory"], machineSettings["cores"], self.__vmStartScript))
+            result = self.__execCmdInFreiburg("msub -m p -l walltime=%s,mem=%s,nodes=1:ppn=%d %s" % (walltime, machineSettings["memory"], machineSettings["cores"], self.__vmStartScript))
 
             # std_out = batch job id
             if result[0] == 0 and result[1].strip().isdigit():

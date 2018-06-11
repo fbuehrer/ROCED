@@ -45,6 +45,7 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
 
         self.logger = logging.getLogger("SlurmReq")
         self.__str__ = self.description
+        self._curMaxWalltime = 0
 
     def init(self):
         super(SlurmRequirementAdapter, self).init()
@@ -74,6 +75,8 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
         required_cpus_running_jobs = 0
         cpus_dependency_jobs = 0
 
+        self._curMaxWalltime = 0
+
         for job in jobs.values():
             if "Dependency" in job['state_reason']:
                 cpus_dependency_jobs += job['pn_min_cpus']
@@ -87,6 +90,9 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
                 job_array_count = self.get_job_array_count(job['array_task_str'])
                 required_cpus_total += job['pn_min_cpus'] * job_array_count
                 required_cpus_idle_jobs += job['pn_min_cpus'] * job_array_count
+                if self.get_job_walltime_seconds(job) > self._curMaxWalltime:
+                    self._curMaxWalltime = self.get_job_walltime_seconds(job)
+                    self.logger.debug('setting current walltime to {}'.format(self._curMaxWalltime))
             elif "RUNNING" in job['job_state']:
                 required_cpus_total += job['pn_min_cpus']
                 required_cpus_running_jobs += job['pn_min_cpus']
@@ -160,3 +166,10 @@ class SlurmRequirementAdapter(RequirementAdapterBase):
                 total_count += int(job_range)
         return total_count
 
+    def get_job_walltime_seconds(self,job):
+        try:
+            walltime = sum(x * int(t) for x, t in zip([3600, 60, 1], job['time_limit_str'].split(":")))
+        except:
+            self.logger.error('Problem with getting time limit for job')
+            walltime = 3600
+        return walltime

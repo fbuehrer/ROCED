@@ -132,6 +132,9 @@ class ScaleCore(object):
         mReq = self.reqBox.getMachineTypeRequirement()
         logger.info("Current requirement: %s" % mReq)
 
+        mWT = self.reqBox.getMaxWalltime()
+        logger.info("Current max walltime {}".format(mWT))
+
         siteInfo = self.siteBox.siteInformation
         runningBySite = self.siteBox.runningMachinesCount
 
@@ -161,7 +164,7 @@ class ScaleCore(object):
                 logger.debug("decision[ksite][kmach]=%s" % decision[ksite][kmach])
         logger.info("Absolute Decision: %s" % decision)
 
-        self.siteBox.applyMachineDecision(decision)
+        self.siteBox.applyMachineDecision(decision,mWT)
 
         logger.info(self.mr.getMachineOverview())
 
